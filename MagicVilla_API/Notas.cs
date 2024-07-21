@@ -37,14 +37,42 @@ luego se hace un add-migration AlimentarTabla y a continuacion otro update-datab
 esto lo que hace es inyectar el servicio de appDbContext en nuestro controlador, conectando éste (y el CRUD) con la DB.
 
 9.- modificamos correspondientemente los CRUD del controlador para que, en lugar del Store, usen la db. (esta comentado lo antiguo).
+10.- para crear y updatear, usamos DTOs custom. mirar en carpeta de dto: villaUpdateDto y VillaCreateDto.
+11.- hasta ahora se ha usado metodos SINCRONOS, pero es mejor usar asyncs. para ello, cambiamos métodos no asyncs como "ToList" a las variantes
+asíncronas, que sería ToListAsync; antes de todo se ha de poner await, y en el método, async Task <...  . Así, un método asíncrono que era así:
 
+public ActionResult<IEnumerable<VillaDto>> GetVillas()
+  {
+    return Ok(_dbFer.Villas.ToList());
+  }
+
+quedaría así:
+
+public async Task <ActionResult<IEnumerable<VillaDto>>> GetVillas()
+  {
+    return Ok(await _dbFer.Villas.ToListAsync());
+  }
   
+ igual se puede hacer con FirstOrDefault ( -> FirstOrDefaultAsync), SaveChanges, Add, etc... (ver controller)
+
+12.- automapper: hasta ahora hemos convertido un obj en otro (por ej, en el put o patch, de un objeto tipo "Villa" a VillaDto). Es un problema si hay 500 atributos,
+por lo que existe automapper para eso.
   
-  
-  
-  
-  
-  
+debemos instalar 2 paketes:
+
+-AutoMapper
+-AutoMapper.Extensions.Microsoft.DependencyInjection  <-------- este NOOOOOOO!!! ESTA DEPRECATED Y DA BUG!!
+
+
+Ahora hay que clear una nueva clase en el proyecto:
+
+a) click dcho en el proyecto (magicVilla_API), add -> class; la llamamos como queramos, la nuestra será ConfigMapeador 
+b) la clase debe heredar de la interfaz llamada Profile
+c) arriba: using AutoMapper;
+d) creamos el constructor. ver ConfigMapeador
+e) una vez hecho, debemos agregar el servicio en program.cs. El servicio del mapper es: 
+
+El delete no necesita mapeo.
   
   
  */

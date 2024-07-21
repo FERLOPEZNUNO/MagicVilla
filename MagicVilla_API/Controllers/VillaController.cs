@@ -5,6 +5,7 @@ using MagicVilla_API.Models.Dto;
 using MagicVilla_API.Datos;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.EntityFrameworkCore;
+using AutoMapper;
 
 namespace MagicVilla_API.Controllers
 {
@@ -17,14 +18,18 @@ namespace MagicVilla_API.Controllers
         // a las variables privadas se les pone guion bajo por convención
         private readonly ILogger<VillaController> _loggerFer;
 
-        //
+        //inyectamos el servicio dbcontext:
         private readonly ApplicationDbContext _dbFer;
 
-        //constructor donde vamos a inyectar dependencias: nuestro servicio de logger y el de la database.
-        public VillaController(ILogger<VillaController> logger, ApplicationDbContext db)
+        //inyectamos el servicio mapper:
+        private readonly IMapper _mapeador;
+
+        //constructor donde vamos a inyectar dependencias: nuestro servicio de logger y el de la database, y el del maper.
+        public VillaController(ILogger<VillaController> logger, ApplicationDbContext db, IMapper mapper)
         {
             _loggerFer = logger;
             _dbFer = db;
+            _mapeador = mapper;
         }
 
 
@@ -37,15 +42,29 @@ namespace MagicVilla_API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         //el endpoint ha de ser diferente cada vez. no puedo usar otro llamado igual a este.
         //el ActionResult nos permite que el método devuelva o bien una lista de villaDtos o bien una action (ok, 404, etc)
-        public ActionResult <IEnumerable<VillaDto>> GetVillas()
+        public async Task <ActionResult <IEnumerable<VillaDto>>> GetVillas()
         {
             //ejemplo uso del logger - el msg saldrá en la consola:
             _loggerFer.LogInformation("Obtener todas las villas");
+
+            //creamos 1 lista para luego usar el mapper (IEnumberable es 1 interfaz que permite iterar en una coleccion):
+            IEnumerable<Villa> villaList = await _dbFer.Villas.ToListAsync();
+
+
+
             //aqui el OK va a devolver 1 mensaje, junto con la lista, que diga que todo ha salido bien.
             // antiguo, con store:
             // return Ok (VillaStore.villaList);
+
             //el de la DB: hacemos un tolist para que lo devuelva en forma de lista.
-            return Ok(_dbFer.Villas.ToList());
+            //return Ok(_dbFer.Villas.ToList());
+
+            //mejorado con async:
+            //return Ok(await _dbFer.Villas.ToListAsync());  
+
+            //con el mapper. devolvemos una lista IEnumberable de tipo VillaDto y obtendremos la info de villaList:
+            return Ok(_mapeador.Map<IEnumerable<VillaDto>>(villaList));
+
         }
         // el firstorDefault comprueba toda la list, elemento a elemento. returneará el 1er (first) elemento que cumpla
         //la condición establecida en el paréntesis, es decir, que la id de ese objeto analizado sea igual
@@ -57,7 +76,7 @@ namespace MagicVilla_API.Controllers
         [HttpGet("Id:int", Name="GetVilla")]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public ActionResult <VillaDto> GetVilla(int id)
+        public async Task <ActionResult <VillaDto>> GetVilla(int id)
         {
             //si el id solicitado es 0 saldrá un error badrequest.
             if (id == 0)
@@ -70,14 +89,18 @@ namespace MagicVilla_API.Controllers
             //lo de abajo es para Store, no sirve con db.
             //var villa = VillaStore.villaList.FirstOrDefault(villa => villa.Id == id);
 
-            var villa = _dbFer.Villas.FirstOrDefault(v => v.Id == id);
+            var villa = await _dbFer.Villas.FirstOrDefaultAsync(v => v.Id == id);
 
             if (villa == null)
             {
                 return NotFound();
             }
 
-            return  Ok (villa);
+            //sin automapper:
+            //     return  Ok (villa);
+
+            //con:
+            return Ok(_mapeador.Map<VillaDto>(villa));
         }
 
         [HttpPost]
@@ -87,7 +110,7 @@ namespace MagicVilla_API.Controllers
 
         //el fromBody coge lo que introducirán en la solicitud (id, nombre, etc), que por lo general
         //estará en formato json, y lo convertirá en 1 instancia de VillaDto (deserializacion).
-        public ActionResult<VillaDto> CrearVilla([FromBody] VillaDto villaNueva)
+        public async Task<ActionResult<VillaDto>> CrearVilla([FromBody] VillaCreateDto villaNueva)
         {
             //justo abajo, relacionado con el Required de VillaDTo: se comprueba que el name introducido sea válido 
             //de acuerdo con la regla de que no puede ser más largo de 30 chars.
@@ -113,7 +136,7 @@ namespace MagicVilla_API.Controllers
             */
 
             //nuevo, con db:
-            if (_dbFer.Villas.FirstOrDefault(v => v.Nombre.ToLower() == villaNueva.Nombre.ToLower()) != null)
+            if (await _dbFer.Villas.FirstOrDefaultAsync(v => v.Nombre.ToLower() == villaNueva.Nombre.ToLower()) != null)
             {
                 ModelState.AddModelError("repe", "nombre de villa ya existe, tontin");
                 return BadRequest(ModelState);
@@ -126,10 +149,15 @@ namespace MagicVilla_API.Controllers
             }
             //el id debe ser generado AUTO, por lo que si introducen id dará error 500; si es 0 está ok, ya que más adelante se cambia.
             //por ello cuando se introduzca el post hay que dejar en 0 la ID
-            if (villaNueva.Id > 0)
+
+
+            //lo de abajo no hace falta con el VillaDtoCreate.
+            /*if (villaNueva.Id > 0)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError);
             }
+            */
+
             //para generar automaticamente el id: villaNueva.Id es la id de la villa que estamos creando.
             //Ahí asignaremos el num máximo de id que exista en el Storage. Para ello ordenamos la lista del Storage de forma
             //descendente por el ID (con la lambda) y cogemos el 1er dato que haya, que será el más grande, y le añadimos 1.
@@ -143,8 +171,8 @@ namespace MagicVilla_API.Controllers
             //antiguo, sin db
             //VillaStore.villaList.Add(villaNueva);
 
-            //para DB: creamos 1 nuevo objeto villa en base a lo que recibe del dto (el id no, es automático)
-            Villa modelo = new()
+            //para DB: creamos 1 nuevo objeto villa en base a lo que recibe del dto (el id no, es automático). Todo esto es SIN mapeador, lo marcamos. Abajo con mapper.
+            /* Villa modelo = new()
             {
                 Nombre = villaNueva.Nombre,
                 Detalle = villaNueva.Detalle,
@@ -154,14 +182,19 @@ namespace MagicVilla_API.Controllers
                 MetrosCuadrados = villaNueva.MetrosCuadrados,
                 Amenidad = villaNueva.Amenidad
             };
+            */
+
+            //con mapper:
+            Villa modelo = _mapeador.Map<Villa>(villaNueva);
+
 
             //se añade al registro de la bd lo de arriba, esto hará 1 insert.
-            _dbFer.Villas.Add(modelo);
-            _dbFer.SaveChanges(); //<--- una especie de "commit"
+            await _dbFer.Villas.AddAsync(modelo);
+            await _dbFer.SaveChangesAsync(); //<--- una especie de "commit"
 
             //el CreatedAtRoute es tipo el ok, pero es el 201 en lugar del 200: indica que se ha creado exitosamente el elemento.
             //dentro del paréntesis indicamos 1.- el name el endpoint GetVilla, 2.-la id de la villa en cuestión y 3.- el objeto entero
-            return CreatedAtRoute("GetVilla", new { id = villaNueva.Id }, villaNueva);
+            return CreatedAtRoute("GetVilla", new { id = modelo.Id }, modelo);
 
         }
 
@@ -170,7 +203,7 @@ namespace MagicVilla_API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         //se usa Iactionresult en lugar de action... cuando se usan deletes, ya que hay que devolver "noContent...". para put, por ej, tb.
-        public IActionResult DeleteVilla (int id)
+        public async Task <IActionResult> DeleteVilla (int id)
         {
             if (id == 0)
             {
@@ -181,7 +214,7 @@ namespace MagicVilla_API.Controllers
             //var villa = VillaStore.villaList.FirstOrDefault(v=>v.Id == id);
 
             //nuevo, con db:
-            var villa = _dbFer.Villas.FirstOrDefault(v => v.Id == id);
+            var villa = await _dbFer.Villas.FirstOrDefaultAsync(v => v.Id == id);
 
             if (villa == null)
             {
@@ -193,8 +226,8 @@ namespace MagicVilla_API.Controllers
             //VillaStore.villaList.Remove(villa);
 
             //para hacer el delete propiamente en la db:
-            _dbFer.Villas.Remove(villa);
-            _dbFer.SaveChanges();
+            _dbFer.Villas.Remove(villa); // <-- remove siempre es síncrono.
+            await _dbFer.SaveChangesAsync ();
 
             //siempre que hagamos deletes hay que devolver un NO CONENT, o cuando no se devuelva contenido: con el put tb, por ej.
             return NoContent();
@@ -206,7 +239,7 @@ namespace MagicVilla_API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         //como params, recibe el id de la villa a modificar Y el objeto villa (frombody: es decir, cogerá los elementos de la solicitud
         //http y los convertirá en un objeto tipo VillaDto llamado villaActualizada).
-        public IActionResult UpdateVilla(int id, [FromBody] VillaDto villaActualizada)
+        public async Task<IActionResult> UpdateVilla(int id, [FromBody] VillaUpdateDto villaActualizada)
         {
              if (villaActualizada ==null || id != villaActualizada.Id)
             {
@@ -219,8 +252,9 @@ namespace MagicVilla_API.Controllers
             villa.Ocupantes = villaActualizada.Ocupantes;
             villa.MetrosCuadrados = villaActualizada.MetrosCuadrados;  */
 
-            //con db: 
-            Villa modelo = new()
+            //con db y sin mapper:
+            /*
+               Villa modelo = new()
             {
                 Id = villaActualizada.Id,
                 Nombre = villaActualizada.Nombre,
@@ -231,14 +265,17 @@ namespace MagicVilla_API.Controllers
                 MetrosCuadrados = villaActualizada.MetrosCuadrados,
                 Amenidad = villaActualizada.Amenidad
             };
+            */
+
+            //con db Y mapper:
+            Villa modelo = _mapeador.Map <Villa>(villaActualizada);
+
 
             //invocamos el metodo update enviándole el modelo de arriba y commiteamos:
-            _dbFer.Villas.Update(modelo);
-            _dbFer.SaveChanges();
-
+            _dbFer.Villas.Update(modelo); //<--- siempre es síncrono.
+            await _dbFer.SaveChangesAsync();
 
             return NoContent();
-
         }
 
         //para hacer el patch hay que bajarse nugets. tools -> nuget package manager  -> manage nuget pckgs
@@ -249,7 +286,7 @@ namespace MagicVilla_API.Controllers
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         //como params, recibe el id de la villa a modificar Y un jsonPatchDocument).
-        public IActionResult UpdateParcialVilla(int id, JsonPatchDocument<VillaDto> patchDto)
+        public async Task<IActionResult> UpdateParcialVilla(int id, JsonPatchDocument<VillaUpdateDto> patchDto)
         {
             if (patchDto == null || id == 0)
             {
@@ -259,11 +296,13 @@ namespace MagicVilla_API.Controllers
             //abajo para store, no vale pa db:
             // var villa = VillaStore.villaList.FirstOrDefault(v => v.Id == id);
 
-            //para db (el AsNoTracking se usa para operaciones de solo lectura)
-            var villa = _dbFer.Villas.AsNoTracking().FirstOrDefault(v => v.Id == id);
+            //para db (el AsNoTracking se usa para operaciones de solo lectura cuando luego se va a volver a usar el mismo registro)
+            var villa = await _dbFer.Villas.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
 
             //creamos un villaDto y vamos a llenar sus propiedades en base a mi variable "villa" de forma temporal con lo que YA hay:
-            VillaDto villadto = new()
+            //lo de abajo es sin mapper.
+            /*
+            VillaUpdateDto villadto = new()
             {
                 Id = villa.Id,
                 Nombre = villa.Nombre,
@@ -274,6 +313,10 @@ namespace MagicVilla_API.Controllers
                 MetrosCuadrados = villa.MetrosCuadrados,
                 Amenidad = villa.Amenidad
             };
+            */
+
+            //con mapper: necesitamos un VillaUpdateDto, lo sacamos de "villa":
+            VillaUpdateDto villadto = _mapeador.Map<VillaUpdateDto>(villa);
 
             //para usar el patch en el swagger, hay que poner los datos asi:
             //[
@@ -302,21 +345,23 @@ namespace MagicVilla_API.Controllers
             //creamos 1 modelo de tipo villa llamado "modelo" y llenamos sus propiedades. al haber pasado después del apply del patchdto,
             //esto contendrá lo que hay que modificar: tendrá las propiedades base en TODO menos en el campo modificado:
 
-            Villa modelo = new()
-            {
-                Id = villadto.Id,
-                Nombre = villadto.Nombre,
-                Detalle = villadto.Detalle,
-                ImagenUrl = villadto.ImagenUrl,
-                Ocupantes = villadto.Ocupantes,
-                Tarifa = villadto.Tarifa,
-                MetrosCuadrados = villadto.MetrosCuadrados,
-                Amenidad = villadto.Amenidad
-            };
+            //Villa modelo = new()
+            //{
+            //    Id = villadto.Id,
+            //    Nombre = villadto.Nombre,
+            //    Detalle = villadto.Detalle,
+            //    ImagenUrl = villadto.ImagenUrl,
+            //    Ocupantes = villadto.Ocupantes,
+            //    Tarifa = villadto.Tarifa,
+            //    MetrosCuadrados = villadto.MetrosCuadrados,
+            //    Amenidad = villadto.Amenidad
+            //};
+
+            Villa modelo = _mapeador.Map<Villa>(villadto);
 
             //usamos el metodo update de la db para updatearla:
             _dbFer.Villas.Update(modelo);
-            _dbFer.SaveChanges();
+            await  _dbFer.SaveChangesAsync();
        
             return NoContent();
 
