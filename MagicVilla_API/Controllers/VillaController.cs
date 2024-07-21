@@ -131,7 +131,7 @@ namespace MagicVilla_API.Controllers
             //si no se cumplen los errores de arriba, se borra la villa y se returnea el mensaje de éxito
             VillaStore.villaList.Remove(villa);
 
-            //siempre que hagamos deletes hay que devolver un NO CONENT.    
+            //siempre que hagamos deletes hay que devolver un NO CONENT, o cuando no se devuelva contenido: con el put tb, por ej.
             return NoContent();
         }
 
