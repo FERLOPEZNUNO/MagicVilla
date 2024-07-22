@@ -187,6 +187,9 @@ namespace MagicVilla_API.Controllers
             //con mapper:
             Villa modelo = _mapeador.Map<Villa>(villaNueva);
 
+            //para que la fecha salga bien:
+            modelo.FechaCreacion = DateTime.Now;
+            modelo.FechaActualizacion = DateTime.Now;
 
             //se añade al registro de la bd lo de arriba, esto hará 1 insert.
             await _dbFer.Villas.AddAsync(modelo);
