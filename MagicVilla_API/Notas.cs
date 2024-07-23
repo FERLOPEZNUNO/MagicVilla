@@ -20,7 +20,7 @@ se abre el management studio y en "server name" ponemos localhost; en autenticat
 2.- luego vamos a appsettings.json y ponemos las cosas que salen ahi.
 3.- se conecta la cadena de conexión con nuestro DBcontext. vamos a program.cs y añadimos lo que esta ahi.
 4.- dentro de applicationDbContext, creamos un constructor (ctor +tab) con los datos indicados alli.
-5.- creamos la BD. se hace mediante los comandos "add-migration" y "update-database" en la consola del package manager (tools -> nuget package mgr -> activar consola)
+5.- creamos la BD. se hace mediante los comandos del "package manager console": "add-migration" y "update-database" en la consola del package manager (tools -> nuget package mgr -> activar consola)
 para crear la bd, ponemos en esa consola "add-migration CrearBaseDatos" (lo ultimo es el nombre, da igual)
 esto habrá creado un nuevo folder en el proyecto llamado "Migrations". dentro hay un script para crear la bd, PERO AUN NO LA HA CREADO. 
 6.- para que se ejecute este script, hay que poner update-database.

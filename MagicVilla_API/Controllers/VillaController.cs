@@ -48,9 +48,7 @@ namespace MagicVilla_API.Controllers
             _loggerFer.LogInformation("Obtener todas las villas");
 
             //creamos 1 lista para luego usar el mapper (IEnumberable es 1 interfaz que permite iterar en una coleccion):
-            IEnumerable<Villa> villaList = await _dbFer.Villas.ToListAsync();
-
-
+            IEnumerable<Villa> villaList =  await _dbFer.Villas.ToListAsync();
 
             //aqui el OK va a devolver 1 mensaje, junto con la lista, que diga que todo ha salido bien.
             // antiguo, con store:
